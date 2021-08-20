@@ -14,7 +14,7 @@ tags:
 ---
 ![11](https://user-images.githubusercontent.com/20936398/130273787-9d9ede5d-1ced-49db-a9d9-311960402bc1.png)
 
-Nowadays, if an Android or Java developer wants to run an emulator, specifically an Android one in the cloud the developer may find it extremely hard, or may think it's impossible, but the good news is if the App in question does not require features in newer emulators, for example anything post `android-25`, then it is possible to spin up one of the Arm based emulators in the cloud, below I'll list your options.
+In 2021, if an Android or Java developer wants to run an emulator, specifically an Android one in the cloud the developer may find it extremely hard, or may think it's impossible, but the good news is if the App in question does not require features in newer emulators, for example anything post `android-25`, then it is possible to spin up one of the Arm based emulators in the cloud, below I'll list your options.
 
 <!-- more --> 
 
@@ -207,3 +207,98 @@ tools
 
 Any one of these will work on Travis. What I ended up doing is booting into my Gentoo VM, and created a test bench on Travis, that attempts to start a cluster of Arm based emulators and I was able to get almost if not everything running with android-28 tools, below I'm going to share the project with you, my `.travis.yml` file so you too can learn how to use emulation in Travis. 
 
+So below, I'm going to attach my `.travis.yml` file I created for my project: 
+
+```yaml
+---
+language: android
+jdk: oraclejdk8
+
+android:
+  licenses:
+    - 'android-sdk-preview-license-.+'
+    - 'android-sdk-license-.+'
+    - 'google-gdk-license-.+'
+ 
+  components:
+    - tools
+    - build-tools-30.0.2
+    - tools
+    - android-30
+    - android-22
+    - extra-google-google_play_services
+    - extra-google-m2repository
+    - extra-android-m2repository
+    - sys-img-armeabi-v7a-android-22
+ 
+before_install:
+  - chmod +x gradlew
+  - yes | sdkmanager "platforms;android-30"
+
+before_script:
+  - echo no | android create avd --force -n test -t android-22 --abi armeabi-v7a
+  - emulator -avd test -no-audio -no-window &
+  - bash android-wait-for-emulator
+  - adb shell input keyevent 82 &
+  
+script:
+  - ./gradlew clean build
+  - ./gradlew test
+  - ./gradlew build check
+
+before_cache:
+  - rm -f  $HOME/.gradle/caches/modules-2/modules-2.lock
+  - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+
+cache:
+  directories:
+  - $HOME/.gradle/caches/
+  - $HOME/.gradle/wrapper/
+  - $HOME/.android/build-cache
+```
+
+The app in question is just a simple login page application. You can visit the source code here on my [GitHub](https://github.com/Montana/travis-droidcon2021-talk).
+
+Once you start building, you'll see within 2-3 minutes of the build, this:
+
+<img width="323" alt="Screen Shot 2021-08-20 at 11 00 53 AM" src="https://user-images.githubusercontent.com/20936398/130274985-3a5d9fb7-546f-4061-8936-7bad3cae634a.png">
+
+This is perfectly normal, in fact there's something you can use called `android-wait-for-emulator.sh`, which I recommend just adding to the root of your project, it's a bash script, and reads: 
+
+```bash
+
+ #!/bin/bash
+ 
+set +e
+
+bootanim=""
+failcounter=0
+timeout_in_sec=360
+
+until [[ "$bootanim" =~ "stopped" ]]; do
+  bootanim=`adb -e shell getprop init.svc.bootanim 2>&1 &`
+  if [[ "$bootanim" =~ "device not found" || "$bootanim" =~ "device offline"
+    || "$bootanim" =~ "running" ]]; then
+    let "failcounter += 1"
+    echo "Waiting for emulator to start"
+    if [[ $failcounter -gt timeout_in_sec ]]; then
+      echo "Timeout ($timeout_in_sec seconds) reached; failed to start emulator"
+      exit 1
+    fi
+  fi
+  sleep 1
+done
+
+echo "Emulator is ready"
+```
+
+This saves a little time on booting the emulator. Don't forget, these tests can be performed on the following `os:`, 
+
+```yaml
+linux
+macOS
+```
+
+With the list I provided of emulators that work on Travis, some source code you can mess around with - go ahead have some fun, see what Travis is capable of, and as always if you have any questions please email me at [montana@travis-ci.org](mailto:montana@travis-ci.org). 
+
+Happy building!
